@@ -1,0 +1,689 @@
+```html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>MultiCraft: Nether Update</title>
+    <style>
+        body {
+            margin: 0; overflow: hidden; background-color: #8CBED6; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: none; 
+        }
+        
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; width: 20px; height: 20px;
+            transform: translate(-50%, -50%); pointer-events: none; z-index: 5;
+            mix-blend-mode: difference;
+        }
+        #crosshair::before, #crosshair::after {
+            content: ''; position: absolute; background-color: rgba(255, 255, 255, 0.8);
+        }
+        #crosshair::before { top: 9px; left: 0; width: 20px; height: 2px; }
+        #crosshair::after { top: 0; left: 9px; width: 2px; height: 20px; }
+
+        #water-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 80, 180, 0.4); z-index: 4; display: none; pointer-events: none;
+        }
+        
+        #portal-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(150, 0, 255, 0.6); z-index: 6; opacity: 0; pointer-events: none;
+            transition: opacity 0.1s;
+        }
+
+        #left-zone { position: absolute; bottom: 0; left: 0; width: 50%; height: 100%; z-index: 10; touch-action: none; }
+        #right-zone { position: absolute; bottom: 0; right: 0; width: 50%; height: 100%; z-index: 10; touch-action: none; }
+
+        .control-btn {
+            position: absolute; z-index: 100;
+            background: rgba(40, 40, 40, 0.4); border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            pointer-events: auto; cursor: pointer; backdrop-filter: blur(4px);
+            touch-action: none; transition: transform 0.05s, background 0.1s;
+        }
+        .control-btn.active-btn { transform: scale(0.85); background: rgba(200, 200, 200, 0.6); }
+
+        #btn-jump { bottom: max(90px, env(safe-area-inset-bottom, 90px)); right: max(30px, env(safe-area-inset-right, 30px)); width: 80px; height: 80px; }
+        #btn-jump::before { content: ''; width: 18px; height: 18px; border-top: 5px solid white; border-left: 5px solid white; transform: translateY(6px) rotate(45deg); pointer-events: none; }
+        #btn-jump::after { content: ''; position: absolute; width: 5px; height: 24px; background-color: white; transform: translateY(4px); pointer-events: none; }
+
+        #btn-shift { bottom: max(90px, env(safe-area-inset-bottom, 90px)); left: max(30px, env(safe-area-inset-left, 30px)); width: 65px; height: 65px; }
+        #btn-shift::before { content: ''; width: 26px; height: 6px; background-color: white; border-radius: 3px; transform: translateY(8px); pointer-events: none; }
+        #btn-shift::after { content: ''; position: absolute; width: 12px; height: 12px; background-color: white; border-radius: 50%; transform: translateY(-6px); pointer-events: none; }
+
+        #hotbar-container {
+            position: absolute; bottom: max(15px, env(safe-area-inset-bottom, 15px)); 
+            left: 50%; transform: translateX(-50%); width: 80%; max-width: 400px;
+            overflow-x: auto; overflow-y: hidden; white-space: nowrap;
+            z-index: 30; pointer-events: auto; touch-action: pan-x;
+            border: 2px solid #555; background: rgba(0,0,0,0.6); border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        #hotbar-container::-webkit-scrollbar { display: none; }
+        #hotbar { display: inline-flex; padding: 5px; }
+        .slot {
+            width: 42px; height: 42px; border: 2px solid #888; background-color: rgba(80,80,80,0.6);
+            margin: 0 4px; cursor: pointer; transition: 0.1s; flex-shrink: 0;
+            background-size: cover; image-rendering: pixelated; box-shadow: inset 0 0 5px rgba(0,0,0,0.8); border-radius: 4px;
+        }
+        .slot.selected { border-color: #FFF; border-width: 3px; transform: scale(1.1); box-shadow: 0 0 15px rgba(255,255,255,0.7); }
+
+        .joystick-base {
+            position: absolute; width: 130px; height: 130px; background: rgba(0, 0, 0, 0.2);
+            border: 2px solid rgba(255,255,255,0.15); border-radius: 50%; display: none;
+            transform: translate(-50%, -50%); pointer-events: none; z-index: 15;
+        }
+        .joystick-knob {
+            position: absolute; top: 50%; left: 50%; width: 55px; height: 55px;
+            background: rgba(255, 255, 255, 0.6); border-radius: 50%; transform: translate(-50%, -50%);
+        }
+
+        #time-display {
+            position: absolute; top: max(15px, env(safe-area-inset-top, 15px)); left: max(15px, env(safe-area-inset-left, 15px)); 
+            z-index: 20; color: white; font-size: 14px; background: rgba(0,0,0,0.5); padding: 5px 12px; border-radius: 5px; font-weight: bold; pointer-events: none;
+        }
+        #btn-settings {
+            position: absolute; top: max(15px, env(safe-area-inset-top, 15px)); right: max(15px, env(safe-area-inset-right, 15px)); 
+            z-index: 30; font-size: 26px; background: rgba(0,0,0,0.5); width: 45px; height: 45px; 
+            display: flex; justify-content: center; align-items: center; border-radius: 8px; border: 2px solid #555;
+            pointer-events: auto; cursor: pointer; color: white;
+        }
+
+        .overlay-screen {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85);
+            display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; z-index: 2000; pointer-events: auto;
+        }
+        .box {
+            background: #4a4a4a; border: 4px solid #222; padding: 25px; border-radius: 10px; max-width: 90%; text-align: center; width: 420px;
+            box-shadow: inset -4px -4px 0 rgba(0,0,0,0.3), inset 4px 4px 0 rgba(255,255,255,0.2);
+        }
+        .box h1, .box h2 { color: #4CAF50; margin-top: 0; text-shadow: 2px 2px 0 #000; }
+        .main-btn {
+            padding: 15px 40px; font-size: 20px; border: 4px solid #222; width: 100%; margin-top: 15px;
+            background: #767676; color: white; font-weight: bold; cursor: pointer;
+            box-shadow: inset -4px -4px 0 rgba(0,0,0,0.4), inset 4px 4px 0 rgba(255,255,255,0.4); font-family: inherit;
+        }
+        .main-btn:active { box-shadow: inset 4px 4px 0 rgba(0,0,0,0.4); transform: translateY(2px); }
+
+        .setting-item { margin-bottom: 15px; text-align: left; }
+        .setting-item label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 14px; color: #FFD700; }
+        .setting-item input[type=range], .setting-item select { width: 100%; padding: 5px; font-family: inherit; }
+
+        .progress-container { width: 100%; height: 25px; background: #222; border: 3px solid #555; border-radius: 15px; overflow: hidden; margin-top: 20px; }
+        #progress-bar { width: 0%; height: 100%; background: linear-gradient(90deg, #4CAF50, #81C784); transition: width 0.1s; }
+        #loading-text { margin-top: 10px; font-weight: bold; color: #FFD700; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="tutorial-screen" class="overlay-screen">
+        <div class="box">
+            <h1>NETHER UPDATE 🔥</h1>
+            <div style="text-align: left; font-size: 14px; line-height: 1.5; color: #ddd; margin-bottom: 20px; background: rgba(0,0,0,0.3); padding: 15px; border-radius: 5px; border: 1px solid #333;">
+                <p><b>✨ Исправлено строительство:</b> Теперь блоки ставятся идеально. Просто сделай быстрый <b>ТАП</b> по экрану справа.</p>
+                <p><b>⚒️ Авто-шахтер:</b> Удерживай палец, чтобы ломать всё подряд.</p>
+                <p><b>🔮 Незер:</b> Полистай инвентарь (снизу), найди фиолетовый блок <b>Портала</b>. Зайди в него и подожди 2 секунды!</p>
+            </div>
+            <button id="btn-start" class="main-btn">ИГРАТЬ</button>
+        </div>
+    </div>
+
+    <div id="loading-screen" class="overlay-screen" style="display: none; background: #2c3e50;">
+        <div class="box" style="background: transparent; border: none; box-shadow: none;">
+            <h2 id="loading-title" style="font-size: 30px;">ЗАГРУЗКА...</h2>
+            <div class="progress-container"><div id="progress-bar"></div></div>
+            <div id="loading-text">Инициализация движка...</div>
+        </div>
+    </div>
+
+    <div id="settings-screen" class="overlay-screen" style="display: none; z-index: 2500;">
+        <div class="box">
+            <h2>НАСТРОЙКИ</h2>
+            <div class="setting-item">
+                <label>Чувствительность обзора</label>
+                <input type="range" id="sens-slider" min="0.001" max="0.015" step="0.001" value="0.006">
+            </div>
+            <div class="setting-item">
+                <label>Дальность тумана</label>
+                <input type="range" id="render-dist-slider" min="30" max="150" step="10" value="70">
+            </div>
+            <div class="setting-item">
+                <label>Время суток (Обычный мир)</label>
+                <select id="time-select">
+                    <option value="auto">Динамичное (День-Ночь)</option>
+                    <option value="12">Заморозить: День</option>
+                    <option value="0">Заморозить: Ночь</option>
+                </select>
+            </div>
+            <button class="main-btn" id="btn-close-settings" style="background: #4CAF50;">ПРОДОЛЖИТЬ</button>
+        </div>
+    </div>
+
+    <div id="water-overlay"></div>
+    <div id="portal-overlay"></div>
+    <div id="crosshair"></div>
+    <div id="time-display">08:00</div>
+    <div id="btn-settings">⚙️</div>
+    
+    <div id="hotbar-container">
+        <div id="hotbar">
+            <!-- Обычный мир -->
+            <div class="slot selected" id="slot-grass" data-type="grass"></div>
+            <div class="slot" id="slot-dirt" data-type="dirt"></div>
+            <div class="slot" id="slot-stone" data-type="stone"></div>
+            <div class="slot" id="slot-planks" data-type="planks"></div>
+            <div class="slot" id="slot-log" data-type="log"></div>
+            <div class="slot" id="slot-leaves" data-type="leaves"></div>
+            <div class="slot" id="slot-glass" data-type="glass"></div>
+            <!-- Незер блоки -->
+            <div class="slot" id="slot-obsidian" data-type="obsidian"></div>
+            <div class="slot" id="slot-portal" data-type="portal"></div>
+            <div class="slot" id="slot-netherrack" data-type="netherrack"></div>
+            <div class="slot" id="slot-glowstone" data-type="glowstone"></div>
+        </div>
+    </div>
+
+    <div id="left-zone"></div>
+    <div id="right-zone"></div>
+    <div id="move-stick" class="joystick-base"><div class="joystick-knob" id="move-knob"></div></div>
+
+    <div id="btn-shift" class="control-btn"></div>
+    <div id="btn-jump" class="control-btn"></div>
+
+    <script>
+        // ==========================================
+        // НАСТРОЙКИ И СОСТОЯНИЯ
+        // ==========================================
+        let lookSensitivity = 0.006; let timeMode = 'auto'; let renderDistance = 70;
+        let isJumpingHeld = false; let isShiftingHeld = false; let isSwimming = false; 
+        const WATER_LEVEL = 0; const WORLD_SIZE = 64; 
+        
+        let currentDimension = 'overworld'; // 'overworld' | 'nether'
+        let portalTimer = 0;
+
+        // Память миров
+        const overworldGrid = new Map();
+        const netherGrid = new Map();
+        let voxelGrid = overworldGrid; // Текущий мир
+
+        function getVoxelKey(x, y, z) { return `${Math.round(x)},${Math.round(y)},${Math.round(z)}`; }
+        function getBlock(x, y, z) { return voxelGrid.get(getVoxelKey(x, y, z)); }
+        function setBlock(x, y, z, type) { 
+            if (type === null) voxelGrid.delete(getVoxelKey(x, y, z)); 
+            else voxelGrid.set(getVoxelKey(x, y, z), type); 
+        }
+
+        // ==========================================
+        // ТЕКСТУРЫ
+        // ==========================================
+        function generateTextures() {
+            const createTex = (drawFunc, hasAlpha = false) => {
+                const canvas = document.createElement('canvas'); canvas.width = 16; canvas.height = 16;
+                const ctx = canvas.getContext('2d'); drawFunc(ctx);
+                const tex = new THREE.CanvasTexture(canvas);
+                tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
+                if(hasAlpha) tex.format = THREE.RGBAFormat;
+                return { tex, dataUrl: canvas.toDataURL() };
+            };
+
+            const dirt = createTex(ctx => { ctx.fillStyle = '#6b4d36'; ctx.fillRect(0,0,16,16); for(let i=0; i<60; i++) { ctx.fillStyle = Math.random()>0.5 ? '#593e2b' : '#78563d'; ctx.fillRect(Math.floor(Math.random()*16), Math.floor(Math.random()*16), 1, 1); } });
+            const grassTop = createTex(ctx => { ctx.fillStyle = '#4b7a2d'; ctx.fillRect(0,0,16,16); for(let i=0; i<60; i++) { ctx.fillStyle = Math.random()>0.5 ? '#3d6622' : '#598c36'; ctx.fillRect(Math.floor(Math.random()*16), Math.floor(Math.random()*16), 1, 1); } });
+            const grassSide = createTex(ctx => { ctx.drawImage(dirt.tex.image, 0, 0); ctx.fillStyle = '#4b7a2d'; ctx.fillRect(0,0,16,3); for(let x=0; x<16; x++) { ctx.fillStyle = Math.random()>0.5 ? '#4b7a2d' : '#598c36'; if(Math.random()>0.2) ctx.fillRect(x, 3, 1, Math.floor(Math.random()*3)+1); } });
+            const stone = createTex(ctx => { ctx.fillStyle = '#666666'; ctx.fillRect(0,0,16,16); for(let i=0; i<120; i++) { ctx.fillStyle = Math.random()>0.5 ? '#555555' : '#777777'; ctx.fillRect(Math.floor(Math.random()*16), Math.floor(Math.random()*16), 1, 1); } });
+            const planks = createTex(ctx => { ctx.fillStyle = '#966c42'; ctx.fillRect(0,0,16,16); ctx.fillStyle = '#5c4026'; ctx.fillRect(0,3,16,1); ctx.fillRect(0,7,16,1); ctx.fillRect(0,11,16,1); ctx.fillRect(0,15,16,1); ctx.fillRect(4,0,1,3); ctx.fillRect(10,4,1,3); ctx.fillRect(2,8,1,3); ctx.fillRect(12,12,1,3); for(let i=0; i<20; i++){ ctx.fillStyle = '#805936'; ctx.fillRect(Math.floor(Math.random()*16), Math.floor(Math.random()*16), Math.floor(Math.random()*3)+1, 1); } });
+            const logSide = createTex(ctx => { ctx.fillStyle = '#4a3a27'; ctx.fillRect(0,0,16,16); ctx.fillStyle = '#382a1a'; for(let i=0; i<25; i++) { let w = Math.random() > 0.8 ? 2 : 1; ctx.fillRect(Math.floor(Math.random()*16), 0, w, 16); } });
+            const logTop = createTex(ctx => { ctx.fillStyle = '#966c42'; ctx.fillRect(0,0,16,16); ctx.fillStyle = '#4a3a27'; ctx.fillRect(0,0,16,1); ctx.fillRect(0,15,16,1); ctx.fillRect(0,0,1,16); ctx.fillRect(15,0,1,16); ctx.fillStyle = '#805936'; ctx.fillRect(4,4,8,8); ctx.fillStyle = '#966c42'; ctx.fillRect(5,5,6,6); ctx.fillStyle = '#805936'; ctx.fillRect(7,7,2,2); });
+            const leaves = createTex(ctx => { ctx.clearRect(0,0,16,16); ctx.fillStyle = 'rgba(35, 75, 35, 1)'; ctx.fillRect(0,0,16,16); for(let i=0; i<80; i++) { ctx.fillStyle = Math.random()>0.5 ? 'rgba(45, 95, 45, 1)' : 'rgba(25, 60, 25, 1)'; ctx.fillRect(Math.floor(Math.random()*16), Math.floor(Math.random()*16), 2, 2); } for(let i=0; i<25; i++) { ctx.clearRect(Math.floor(Math.random()*16), Math.floor(Math.random()*16), 1, 1); } }, true);
+            const glass = createTex(ctx => { ctx.clearRect(0,0,16,16); ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.fillRect(0,0,16,16); ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fillRect(0,0,16,1); ctx.fillRect(0,15,16,1); ctx.fillRect(0,0,1,16); ctx.fillRect(15,0,1,16); ctx.fillRect(2,2,4,1); ctx.fillRect(2,3,1,3); }, true);
+            const water = createTex(ctx => { ctx.fillStyle = 'rgba(30, 80, 180, 0.6)'; ctx.fillRect(0,0,16,16); ctx.fillStyle = 'rgba(50, 100, 200, 0.6)'; for(let i=0; i<40; i++) ctx.fillRect(Math.floor(Math.random()*16), Math.floor(Math.random()*16), 3, 1); }, true);
+
+            // НОВЫЕ ТЕКСТУРЫ НЕЗЕРА
+            const netherrack = createTex(ctx => { ctx.fillStyle = '#551111'; ctx.fillRect(0,0,16,16); for(let i=0; i<150; i++) { ctx.fillStyle = Math.random()>0.5 ? '#772222' : '#330000'; ctx.fillRect(Math.floor(Math.random()*16), Math.floor(Math.random()*16), 1, 1); } });
+            const glowstone = createTex(ctx => { ctx.fillStyle = '#ccaa44'; ctx.fillRect(0,0,16,16); for(let i=0; i<80; i++) { ctx.fillStyle = Math.random()>0.5 ? '#ffee66' : '#885522'; ctx.fillRect(Math.floor(Math.random()*16), Math.floor(Math.random()*16), 2, 2); } });
+            const lava = createTex(ctx => { ctx.fillStyle = '#ff5500'; ctx.fillRect(0,0,16,16); for(let i=0; i<60; i++) { ctx.fillStyle = Math.random()>0.5 ? '#ff2200' : '#ffaa00'; ctx.fillRect(Math.floor(Math.random()*16), Math.floor(Math.random()*16), 2, 1); } });
+            const obsidian = createTex(ctx => { ctx.fillStyle = '#110022'; ctx.fillRect(0,0,16,16); for(let i=0; i<80; i++) { ctx.fillStyle = Math.random()>0.5 ? '#221133' : '#000000'; ctx.fillRect(Math.floor(Math.random()*16), Math.floor(Math.random()*16), 1, 1); } });
+            const portal = createTex(ctx => { ctx.fillStyle = 'rgba(150, 0, 200, 0.7)'; ctx.fillRect(0,0,16,16); for(let i=0; i<80; i++) { ctx.fillStyle = Math.random()>0.5 ? 'rgba(200, 50, 255, 0.8)' : 'rgba(100, 0, 150, 0.8)'; ctx.fillRect(Math.floor(Math.random()*16), Math.floor(Math.random()*16), 2, 2); } }, true);
+
+            return { dirt, grassTop, grassSide, stone, planks, logSide, logTop, leaves, glass, water, netherrack, glowstone, lava, obsidian, portal };
+        }
+
+        const t = generateTextures();
+        const icons = { grass: t.grassSide, dirt: t.dirt, stone: t.stone, planks: t.planks, log: t.logSide, leaves: t.leaves, glass: t.glass, netherrack: t.netherrack, glowstone: t.glowstone, obsidian: t.obsidian, portal: t.portal };
+        for(let key in icons) { document.getElementById(`slot-${key}`).style.backgroundImage = `url(${icons[key].dataUrl})`; }
+
+        // ==========================================
+        // 3. THREE.JS СЦЕНА
+        // ==========================================
+        let scene, camera, renderer, sunLight, ambientLight;
+        const visualBlocks = new Map(); 
+        const interactableObjects = []; 
+        let raycaster, outlineMesh, handMesh; 
+        
+        let velocityY = 0; let prevTime = performance.now(); const moveData = { x: 0, y: 0 }; 
+        let currentBlockType = 'grass'; let dayTime = 8; 
+        
+        const cubeGeo = new THREE.BoxGeometry(1, 1, 1);
+        const blockMaterials = {
+            grass: [ new THREE.MeshLambertMaterial({ map: t.grassSide.tex }), new THREE.MeshLambertMaterial({ map: t.grassSide.tex }), new THREE.MeshLambertMaterial({ map: t.grassTop.tex }), new THREE.MeshLambertMaterial({ map: t.dirt.tex }), new THREE.MeshLambertMaterial({ map: t.grassSide.tex }), new THREE.MeshLambertMaterial({ map: t.grassSide.tex }) ],
+            dirt: new THREE.MeshLambertMaterial({ map: t.dirt.tex }), stone: new THREE.MeshLambertMaterial({ map: t.stone.tex }), planks: new THREE.MeshLambertMaterial({ map: t.planks.tex }),
+            log: [ new THREE.MeshLambertMaterial({ map: t.logSide.tex }), new THREE.MeshLambertMaterial({ map: t.logSide.tex }), new THREE.MeshLambertMaterial({ map: t.logTop.tex }), new THREE.MeshLambertMaterial({ map: t.logTop.tex }), new THREE.MeshLambertMaterial({ map: t.logSide.tex }), new THREE.MeshLambertMaterial({ map: t.logSide.tex }) ],
+            leaves: new THREE.MeshLambertMaterial({ map: t.leaves.tex, transparent: true, alphaTest: 0.5 }), glass: new THREE.MeshLambertMaterial({ map: t.glass.tex, transparent: true, opacity: 0.9, alphaTest: 0.1 }),
+            water: new THREE.MeshLambertMaterial({ map: t.water.tex, transparent: true, opacity: 0.6, depthWrite: false }),
+            
+            // Незер
+            netherrack: new THREE.MeshLambertMaterial({ map: t.netherrack.tex }),
+            glowstone: new THREE.MeshLambertMaterial({ map: t.glowstone.tex, emissive: 0xaa6600, emissiveIntensity: 0.8 }),
+            lava: new THREE.MeshLambertMaterial({ map: t.lava.tex, emissive: 0xff3300, emissiveIntensity: 0.8 }),
+            obsidian: new THREE.MeshLambertMaterial({ map: t.obsidian.tex }),
+            portal: new THREE.MeshLambertMaterial({ map: t.portal.tex, transparent: true, opacity: 0.8, emissive: 0x8800cc, emissiveIntensity: 0.6 })
+        };
+
+        document.getElementById('btn-settings').addEventListener('pointerdown', (e) => { e.stopPropagation(); document.getElementById('settings-screen').style.display = 'flex'; });
+        document.getElementById('btn-close-settings').addEventListener('pointerdown', (e) => { e.stopPropagation(); document.getElementById('settings-screen').style.display = 'none'; });
+        document.getElementById('sens-slider').addEventListener('input', (e) => { lookSensitivity = parseFloat(e.target.value); });
+        document.getElementById('time-select').addEventListener('change', (e) => { timeMode = e.target.value; });
+        document.getElementById('render-dist-slider').addEventListener('input', (e) => { renderDistance = parseFloat(e.target.value); if(scene && scene.fog) { scene.fog.far = renderDistance; scene.fog.near = renderDistance * 0.3; } });
+
+        document.querySelectorAll('.slot').forEach(slot => {
+            slot.addEventListener('pointerdown', (e) => {
+                e.stopPropagation(); document.querySelectorAll('.slot').forEach(s => s.classList.remove('selected'));
+                slot.classList.add('selected'); currentBlockType = slot.dataset.type;
+                if(handMesh) { const mat = blockMaterials[currentBlockType]; handMesh.material = Array.isArray(mat) ? mat : [mat, mat, mat, mat, mat, mat]; }
+            });
+        });
+
+        document.getElementById('btn-start').addEventListener('click', () => {
+            document.getElementById('tutorial-screen').style.display = 'none';
+            initEngine();
+        });
+
+        function initEngine() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(80, window.innerWidth / window.innerHeight, 0.1, 200);
+            
+            handMesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), blockMaterials['grass']);
+            handMesh.position.set(0.4, -0.4, -0.6); handMesh.rotation.set(0, -Math.PI/4, 0);
+            camera.add(handMesh); scene.add(camera); 
+
+            ambientLight = new THREE.AmbientLight(0xffffff, 0.6); scene.add(ambientLight);
+            sunLight = new THREE.DirectionalLight(0xffffff, 0.8); scene.add(sunLight);
+
+            const outlineMat = new THREE.LineBasicMaterial({ color: 0x000000, linewidth: 2 });
+            outlineMesh = new THREE.LineSegments(new THREE.EdgesGeometry(cubeGeo), outlineMat);
+            outlineMesh.scale.set(1.005, 1.005, 1.005); outlineMesh.visible = false; scene.add(outlineMesh);
+
+            raycaster = new THREE.Raycaster(); 
+            renderer = new THREE.WebGLRenderer({ antialias: false });
+            renderer.setPixelRatio(window.devicePixelRatio); renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            setupControls();
+            window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+
+            loadDimension('overworld');
+        }
+
+        // ==========================================
+        // ГЕНЕРАЦИЯ МИРОВ И ИЗМЕРЕНИЙ
+        // ==========================================
+        function loadDimension(dimName) {
+            document.getElementById('loading-screen').style.display = 'flex';
+            document.getElementById('loading-title').innerText = dimName === 'overworld' ? "СОЗДАНИЕ МИРА" : "ВХОД В НЕЗЕР";
+            currentDimension = dimName;
+            voxelGrid = dimName === 'overworld' ? overworldGrid : netherGrid;
+
+            // Очистка старой сцены
+            interactableObjects.forEach(obj => scene.remove(obj));
+            interactableObjects.length = 0; visualBlocks.clear();
+            const oldClouds = scene.getObjectByName("Clouds"); if(oldClouds) scene.remove(oldClouds);
+
+            if (voxelGrid.size > 0) {
+                // Мир уже сгенерирован, просто рендерим
+                setTimeout(buildVisualWorld, 50);
+            } else {
+                // Генерируем с нуля
+                generateDimensionData();
+            }
+        }
+
+        function generateDimensionData() {
+            let startX = -WORLD_SIZE/2;
+            const bar = document.getElementById('progress-bar');
+            
+            function noise(x, z) { return Math.sin(x * 0.05) * Math.cos(z * 0.05) * 6 + Math.sin(x * 0.2) * 2; }
+            function netherNoise(x, z) { return Math.sin(x * 0.1) * Math.cos(z * 0.1) * 4; }
+
+            function step() {
+                if (startX >= WORLD_SIZE/2) { buildVisualWorld(); return; }
+
+                for(let s = 0; s < 2; s++) {
+                    if (startX >= WORLD_SIZE/2) break;
+                    let x = startX;
+
+                    for (let z = -WORLD_SIZE/2; z < WORLD_SIZE/2; z++) {
+                        if (currentDimension === 'overworld') {
+                            let h = Math.floor(noise(x, z)); 
+                            if (h >= WATER_LEVEL) {
+                                if (h <= WATER_LEVEL + 1) setBlock(x, h, z, 'sand'); else setBlock(x, h, z, 'grass');
+                                setBlock(x, h - 1, z, 'dirt'); setBlock(x, h - 2, z, 'stone'); setBlock(x, h - 3, z, 'stone');
+                            } else {
+                                setBlock(x, h, z, 'sand'); setBlock(x, h - 1, z, 'stone');
+                                for(let wy = h + 1; wy <= WATER_LEVEL; wy++) setBlock(x, wy, z, 'water');
+                            }
+                            if (x === 0 && z === 0) camera.position.set(0, Math.max(h, WATER_LEVEL) + 2, 0);
+
+                            if (h > WATER_LEVEL + 1 && Math.random() < 0.02 && Math.abs(x) < WORLD_SIZE/2-3 && Math.abs(z) < WORLD_SIZE/2-3) {
+                                const th = Math.floor(Math.random() * 2) + 4;
+                                for(let y=1; y<=th; y++) setBlock(x, h+y, z, 'log');
+                                for(let lx = -2; lx <= 2; lx++) {
+                                    for(let lz = -2; lz <= 2; lz++) {
+                                        for(let ly = th - 2; ly <= th + 1; ly++) {
+                                            if(Math.abs(lx) === 2 && Math.abs(lz) === 2 && ly > th - 2) continue;
+                                            if(lx === 0 && lz === 0 && ly <= th) continue; 
+                                            setBlock(x + lx, h + ly, z + lz, 'leaves');
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // NETHER GENERATION
+                            let hFloor = Math.floor(netherNoise(x, z)) + 2; 
+                            let hCeil = Math.floor(netherNoise(x+100, z+100)) + 12;
+
+                            // Пол
+                            for(let y = -2; y <= hFloor; y++) setBlock(x, y, z, 'netherrack');
+                            // Лава
+                            if (hFloor < 1) { for(let y = hFloor + 1; y <= 1; y++) setBlock(x, y, z, 'lava'); }
+                            // Потолок
+                            for(let y = hCeil; y <= 16; y++) setBlock(x, y, z, 'netherrack');
+                            // Светящийся камень
+                            if (Math.random() < 0.05) setBlock(x, hCeil - 1, z, 'glowstone');
+
+                            if (x === 0 && z === 0) camera.position.set(0, Math.max(hFloor, 1) + 2, 0);
+                        }
+                    }
+                    startX++;
+                }
+                bar.style.width = Math.floor(((startX + WORLD_SIZE/2) / WORLD_SIZE) * 50) + '%'; 
+                setTimeout(step, 0);
+            }
+            step();
+        }
+
+        function buildVisualWorld() {
+            document.getElementById('loading-text').innerText = "Сборка мешей...";
+            const bar = document.getElementById('progress-bar');
+            
+            const typeMap = {};
+            voxelGrid.forEach((type, key) => {
+                if(!typeMap[type]) typeMap[type] = [];
+                const coords = key.split(',').map(Number);
+                typeMap[type].push(new THREE.Vector3(coords[0], coords[1], coords[2]));
+            });
+
+            const dummy = new THREE.Object3D();
+            for (const type in typeMap) {
+                const count = typeMap[type].length;
+                const iMesh = new THREE.InstancedMesh(cubeGeo, blockMaterials[type], count);
+                typeMap[type].forEach((pos, i) => {
+                    dummy.position.copy(pos); dummy.updateMatrix(); iMesh.setMatrixAt(i, dummy.matrix);
+                    visualBlocks.set(getVoxelKey(pos.x, pos.y, pos.z), { mesh: iMesh, id: i });
+                });
+                iMesh.instanceMatrix.needsUpdate = true;
+                scene.add(iMesh);
+                if (type !== 'water' && type !== 'lava') interactableObjects.push(iMesh); // Сквозь жидкости можно проходить
+            }
+            bar.style.width = '100%';
+            
+            if (currentDimension === 'overworld') {
+                const cloudMat = new THREE.MeshLambertMaterial({color: 0xffffff, transparent: true, opacity: 0.8});
+                const cloudMesh = new THREE.InstancedMesh(cubeGeo, cloudMat, 200);
+                let cIndex = 0;
+                for(let i=0; i<20; i++) {
+                    let cx = Math.random() * 150 - 75; let cz = Math.random() * 150 - 75;
+                    for(let b=0; b<10; b++){ dummy.position.set(cx + Math.random()*5, 40 + Math.random()*2, cz + Math.random()*5); dummy.updateMatrix(); cloudMesh.setMatrixAt(cIndex++, dummy.matrix); }
+                }
+                cloudMesh.name = "Clouds"; scene.add(cloudMesh);
+            }
+
+            setTimeout(() => {
+                document.getElementById('loading-screen').style.display = 'none';
+                prevTime = performance.now(); animate();
+            }, 100);
+        }
+
+        // ==========================================
+        // ИДЕАЛЬНАЯ ФИЗИКА УСТАНОВКИ (ИСПРАВЛЕНИЕ)
+        // ==========================================
+        function checkCollision(bx, by, bz) {
+            // Проверка, не пересекается ли блок (bx,by,bz) с игроком
+            const pX = camera.position.x, pY = camera.position.y - (isShiftingHeld ? 1.0 : 1.5), pZ = camera.position.z;
+            const pBox = new THREE.Box3(new THREE.Vector3(pX - 0.3, pY, pZ - 0.3), new THREE.Vector3(pX + 0.3, pY + 1.6, pZ + 0.3));
+            const bBox = new THREE.Box3(new THREE.Vector3(bx - 0.5, by - 0.5, bz - 0.5), new THREE.Vector3(bx + 0.5, by + 0.5, bz + 0.5));
+            return pBox.intersectsBox(bBox);
+        }
+
+        function buildBlockAtCrosshair() {
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const hits = raycaster.intersectObjects(interactableObjects);
+
+            if (hits.length > 0 && hits[0].distance < 6) {
+                const hit = hits[0];
+                const p = hit.point.clone().add(hit.face.normal.clone().multiplyScalar(0.1));
+                const bx = Math.floor(p.x + 0.5), by = Math.floor(p.y + 0.5), bz = Math.floor(p.z + 0.5);
+
+                // Если новый блок НЕ внутри игрока
+                if (!checkCollision(bx, by, bz)) { 
+                    setBlock(bx, by, bz, currentBlockType); 
+                    const newMesh = new THREE.Mesh(cubeGeo, blockMaterials[currentBlockType]);
+                    newMesh.position.set(bx, by, bz); scene.add(newMesh);
+                    if (currentBlockType !== 'water' && currentBlockType !== 'lava') interactableObjects.push(newMesh);
+                    visualBlocks.set(getVoxelKey(bx, by, bz), { mesh: newMesh, id: null });
+
+                    handMesh.rotation.x -= 0.5; setTimeout(()=> handMesh.rotation.x += 0.5, 100);
+                }
+            }
+        }
+
+        function breakBlockAtCrosshair() {
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const hits = raycaster.intersectObjects(interactableObjects);
+
+            if (hits.length > 0 && hits[0].distance < 6) {
+                const p = hits[0].point.clone().sub(hits[0].face.normal.clone().multiplyScalar(0.1));
+                const bx = Math.floor(p.x + 0.5), by = Math.floor(p.y + 0.5), bz = Math.floor(p.z + 0.5);
+                
+                setBlock(bx, by, bz, null); 
+
+                const visData = visualBlocks.get(getVoxelKey(bx, by, bz));
+                if (visData) {
+                    if (visData.id !== null) {
+                        const dummy = new THREE.Object3D(); dummy.scale.set(0,0,0); dummy.updateMatrix();
+                        visData.mesh.setMatrixAt(visData.id, dummy.matrix); visData.mesh.instanceMatrix.needsUpdate = true;
+                    } else {
+                        scene.remove(visData.mesh); interactableObjects.splice(interactableObjects.indexOf(visData.mesh), 1);
+                    }
+                    visualBlocks.delete(getVoxelKey(bx, by, bz));
+                }
+                outlineMesh.visible = false;
+                handMesh.rotation.x -= 0.5; setTimeout(()=> handMesh.rotation.x += 0.5, 100);
+            }
+        }
+
+        function setupControls() {
+            const leftZone = document.getElementById('left-zone'); const rightZone = document.getElementById('right-zone');
+            const moveStick = document.getElementById('move-stick'); const moveKnob = document.getElementById('move-knob');
+            const btnJump = document.getElementById('btn-jump'); const btnShift = document.getElementById('btn-shift');
+            
+            let movePointerId = null; let moveStartX, moveStartY;
+            let lookPointerId = null; let lookLastX, lookLastY;
+            const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+
+            // Ходьба
+            const handleMoveStart = (e) => { e.preventDefault(); if (e.target.closest('.control-btn')) return; if (movePointerId !== null) return; leftZone.setPointerCapture(e.pointerId); movePointerId = e.pointerId; moveStartX = e.clientX; moveStartY = e.clientY; moveStick.style.display = 'block'; moveStick.style.left = moveStartX + 'px'; moveStick.style.top = moveStartY + 'px'; moveKnob.style.transform = `translate(-50%, -50%)`; };
+            const handleMove = (e) => { e.preventDefault(); if (e.pointerId === movePointerId) { const dX = e.clientX - moveStartX; const dY = e.clientY - moveStartY; const dist = Math.min(50, Math.sqrt(dX*dX + dY*dY)); const angle = Math.atan2(dY, dX); moveKnob.style.transform = `translate(calc(-50% + ${dist*Math.cos(angle)}px), calc(-50% + ${dist*Math.sin(angle)}px))`; moveData.x = (dist*Math.cos(angle)) / 50; moveData.y = (dist*Math.sin(angle)) / 50; } };
+            const stopMove = (e) => { if (e.pointerId === movePointerId) { movePointerId = null; moveData.x = 0; moveData.y = 0; moveStick.style.display = 'none'; leftZone.releasePointerCapture(e.pointerId); } };
+            leftZone.addEventListener('pointerdown', handleMoveStart); leftZone.addEventListener('pointermove', handleMove); leftZone.addEventListener('pointerup', stopMove); leftZone.addEventListener('pointercancel', stopMove);
+
+            // Осмотр и Взаимодействие (Надежный тап)
+            let touchStartTime = 0; let isDragging = false;
+            let initialBreakTimeout = null; let continuousBreakInterval = null; let isBreaking = false;
+            const LONG_PRESS_DUR = 350; const BREAK_INT = 250; const DRAG_THRES = 10; 
+
+            function cancelBreaking() { if(initialBreakTimeout) clearTimeout(initialBreakTimeout); if(continuousBreakInterval) clearInterval(continuousBreakInterval); initialBreakTimeout = null; continuousBreakInterval = null; isBreaking = false; }
+
+            rightZone.addEventListener('pointerdown', (e) => {
+                e.preventDefault(); if (e.target.closest('.control-btn') || e.target.closest('.slot') || e.target.closest('#hotbar-container') || e.target.closest('#btn-settings')) return;
+                if (lookPointerId !== null) return;
+                rightZone.setPointerCapture(e.pointerId); lookPointerId = e.pointerId;
+                lookLastX = e.clientX; lookLastY = e.clientY;
+                touchStartTime = Date.now(); isDragging = false; isBreaking = false;
+
+                initialBreakTimeout = setTimeout(() => {
+                    isBreaking = true; breakBlockAtCrosshair(); if (navigator.vibrate) navigator.vibrate(30);
+                    continuousBreakInterval = setInterval(() => { breakBlockAtCrosshair(); if (navigator.vibrate) navigator.vibrate(15); }, BREAK_INT);
+                }, LONG_PRESS_DUR);
+            });
+
+            rightZone.addEventListener('pointermove', (e) => {
+                e.preventDefault();
+                if (e.pointerId === lookPointerId) {
+                    const dX = e.clientX - lookLastX; const dY = e.clientY - lookLastY;
+                    lookLastX = e.clientX; lookLastY = e.clientY;
+                    
+                    euler.setFromQuaternion(camera.quaternion);
+                    euler.y -= dX * lookSensitivity; euler.x -= dY * lookSensitivity;
+                    euler.x = Math.max(-Math.PI/2 + 0.1, Math.min(Math.PI/2 - 0.1, euler.x));
+                    camera.quaternion.setFromEuler(euler);
+
+                    if (Math.abs(dX) > 2 || Math.abs(dY) > 2) { isDragging = true; cancelBreaking(); }
+                }
+            });
+
+            const stopLook = (e) => {
+                if (e.pointerId === lookPointerId) { 
+                    lookPointerId = null; rightZone.releasePointerCapture(e.pointerId); cancelBreaking();
+                    // ТАП: Если не ломали, не тащили, и прошло мало времени
+                    if (!isBreaking && !isDragging && (Date.now() - touchStartTime) < LONG_PRESS_DUR) buildBlockAtCrosshair();
+                }
+            };
+            rightZone.addEventListener('pointerup', stopLook); rightZone.addEventListener('pointercancel', stopLook);
+
+            // КНОПКИ
+            const setupButton = (btn, onStart, onStop) => { const triggerStart = (e) => { e.preventDefault(); e.stopPropagation(); btn.classList.add('active-btn'); onStart(); }; const triggerStop = (e) => { e.preventDefault(); e.stopPropagation(); btn.classList.remove('active-btn'); onStop(); }; btn.addEventListener('touchstart', triggerStart, {passive: false}); btn.addEventListener('mousedown', triggerStart); btn.addEventListener('touchend', triggerStop); btn.addEventListener('mouseup', triggerStop); btn.addEventListener('mouseleave', triggerStop); };
+            setupButton(btnJump, () => isJumpingHeld = true, () => isJumpingHeld = false);
+            setupButton(btnShift, () => isShiftingHeld = true, () => isShiftingHeld = false);
+            window.addEventListener('keydown', (e) => { if (e.code === 'Space') { isJumpingHeld = true; btnJump.classList.add('active-btn'); } if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { isShiftingHeld = true; btnShift.classList.add('active-btn'); } });
+            window.addEventListener('keyup', (e) => { if (e.code === 'Space') { isJumpingHeld = false; btnJump.classList.remove('active-btn'); } if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { isShiftingHeld = false; btnShift.classList.remove('active-btn'); } });
+        }
+
+        // ==========================================
+        // ИГРОВОЙ ЦИКЛ
+        // ==========================================
+        function isSolid(x, y, z) {
+            const b = getBlock(Math.floor(x+0.5), Math.floor(y+0.5), Math.floor(z+0.5));
+            return b && b !== 'water' && b !== 'lava';
+        }
+        function checkWalkCollision(px, py, pz) {
+            const minX = Math.floor(px - 0.3 + 0.5); const maxX = Math.floor(px + 0.3 + 0.5);
+            const minY = Math.floor(py + 0.5);       const maxY = Math.floor(py + 1.6 + 0.5);
+            const minZ = Math.floor(pz - 0.3 + 0.5); const maxZ = Math.floor(pz + 0.3 + 0.5);
+            for (let x = minX; x <= maxX; x++) { for (let y = minY; y <= maxY; y++) { for (let z = minZ; z <= maxZ; z++) {
+                const b = getBlock(x,y,z); if (b && b !== 'water' && b !== 'lava') return true;
+            }}} return false;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if(!camera) return; 
+            const time = performance.now(); const delta = Math.min((time - prevTime) / 1000, 0.1); prevTime = time;
+
+            // Окружение
+            if (currentDimension === 'overworld') {
+                if (timeMode === 'auto') { dayTime += delta * 0.2; if(dayTime > 24) dayTime -= 24; } else { dayTime = parseFloat(timeMode); }
+                const sunAngle = ((dayTime - 6) / 24) * Math.PI * 2; sunLight.position.set(Math.cos(sunAngle) * 100, Math.sin(sunAngle) * 100, 50);
+
+                let skyColor, aInt, sInt;
+                if (dayTime >= 6 && dayTime < 18) { skyColor = new THREE.Color(0x8CBED6); aInt = 0.6; sInt = 0.8; document.getElementById('time-display').innerText = "Время: День"; } 
+                else if (dayTime >= 18 && dayTime < 20) { skyColor = new THREE.Color(0xff8c00).lerp(new THREE.Color(0x111133), (dayTime - 18) / 2); aInt = 0.3; sInt = 0.2; } 
+                else if (dayTime >= 20 || dayTime < 4) { skyColor = new THREE.Color(0x050510); aInt = 0.1; sInt = 0.0; document.getElementById('time-display').innerText = "Время: Ночь"; } 
+                else { skyColor = new THREE.Color(0x050510).lerp(new THREE.Color(0x8CBED6), (dayTime - 4) / 2); aInt = 0.3; sInt = 0.4; }
+                scene.background = skyColor; if(scene.fog) scene.fog.color = skyColor; ambientLight.intensity = aInt; sunLight.intensity = sInt;
+                const clouds = scene.getObjectByName("Clouds"); if(clouds) { clouds.position.x += delta * 1.5; if(clouds.position.x > 75) clouds.position.x -= 150; }
+            } else {
+                // Незер освещение
+                scene.background = new THREE.Color(0x330000); if(scene.fog) scene.fog.color = new THREE.Color(0x330000);
+                ambientLight.intensity = 0.8; ambientLight.color.setHex(0xffaaaa); sunLight.intensity = 0;
+                document.getElementById('time-display').innerText = "Незер";
+            }
+
+            if(handMesh) handMesh.position.y = (moveData.x !== 0 || moveData.y !== 0) ? -0.4 + Math.sin(Date.now() * 0.01) * 0.05 : -0.4;
+
+            // Вода / Лава
+            const headBlock = getBlock(Math.floor(camera.position.x+0.5), Math.floor(camera.position.y+0.5), Math.floor(camera.position.z+0.5));
+            isSwimming = (headBlock === 'water' || headBlock === 'lava');
+            const overlay = document.getElementById('water-overlay');
+            if (headBlock === 'water') { overlay.style.display = 'block'; overlay.style.backgroundColor = 'rgba(0, 80, 180, 0.5)'; }
+            else if (headBlock === 'lava') { overlay.style.display = 'block'; overlay.style.backgroundColor = 'rgba(255, 50, 0, 0.6)'; }
+            else { overlay.style.display = 'none'; }
+
+            // ПОРТАЛ ЛОГИКА
+            const feetBlock = getBlock(Math.floor(camera.position.x+0.5), Math.floor(camera.position.y-1.0+0.5), Math.floor(camera.position.z+0.5));
+            if (headBlock === 'portal' || feetBlock === 'portal') {
+                portalTimer += delta;
+                document.getElementById('portal-overlay').style.opacity = Math.min(portalTimer / 2, 1);
+                if (portalTimer > 2) {
+                    portalTimer = 0; document.getElementById('portal-overlay').style.opacity = 0;
+                    loadDimension(currentDimension === 'overworld' ? 'nether' : 'overworld');
+                    return; // Прерываем кадр на время загрузки
+                }
+            } else { portalTimer = 0; document.getElementById('portal-overlay').style.opacity = 0; }
+
+
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const aimHits = raycaster.intersectObjects(interactableObjects);
+            if (aimHits.length > 0 && aimHits[0].distance < 6) {
+                outlineMesh.visible = true;
+                const p = aimHits[0].point.clone().sub(aimHits[0].face.normal.clone().multiplyScalar(0.1));
+                outlineMesh.position.set(Math.floor(p.x + 0.5), Math.floor(p.y + 0.5), Math.floor(p.z + 0.5));
+            } else { outlineMesh.visible = false; }
+
+            let baseSpeed = isSwimming ? 3.0 : (isShiftingHeld ? 2.5 : 6.0);
+            const moveDir = new THREE.Vector3(moveData.x, 0, moveData.y); moveDir.normalize();
+            const euler = new THREE.Euler(0, 0, 0, 'YXZ'); euler.setFromQuaternion(camera.quaternion); moveDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), euler.y);
+
+            let velX = moveDir.x * baseSpeed * delta; let velZ = moveDir.z * baseSpeed * delta;
+            let pX = camera.position.x; let pY = camera.position.y - (isShiftingHeld ? 1.0 : 1.5); let pZ = camera.position.z;
+
+            if (velX !== 0) if (!checkWalkCollision(pX + velX, pY, pZ)) pX += velX;
+            if (velZ !== 0) if (!checkWalkCollision(pX, pY, pZ + velZ)) pZ += velZ;
+
+            if (isSwimming) { if (isJumpingHeld) velocityY = 4.0; else velocityY -= 5.0 * delta; if (velocityY < -3.0) velocityY = -3.0; } 
+            else { velocityY -= 25.0 * delta; }
+
+            let velY = velocityY * delta; let onGround = false;
+            if (velY !== 0) {
+                if (!checkWalkCollision(pX, pY + velY, pZ)) { pY += velY; } 
+                else { if (velY < 0) onGround = true; velocityY = 0; pY = Math.round(pY * 1000) / 1000; }
+            }
+
+            if (onGround && isJumpingHeld && !isSwimming) velocityY = 8.5; 
+
+            if (isShiftingHeld && onGround && !isSwimming && (moveData.x !== 0 || moveData.y !== 0)) {
+                if (!checkWalkCollision(pX, pY - 0.5, pZ)) { pX -= velX; pZ -= velZ; }
+            }
+
+            if (pY < -40) { pX = 0; pY = 20; pZ = 0; velocityY = 0; } 
+
+            camera.position.set(pX, pY + (isShiftingHeld ? 1.0 : 1.5), pZ);
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
+
+```

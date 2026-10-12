@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <!-- Метатеги для превращения в приложение (PWA / iOS App) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#87CEEB">
+    <title>Playingtest 67</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        
+        /* Игровой UI */
+        #ui { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; margin-top: -10px; margin-left: -10px; pointer-events: none; opacity: 0.8; }
+        #crosshair::before, #crosshair::after { content: ''; position: absolute; background: white; box-shadow: 0 0 2px black; }
+        #crosshair::before { top: 9px; left: 0; width: 20px; height: 2px; }
+        #crosshair::after { top: 0; left: 9px; width: 2px; height: 20px; }
+        
+        #toolbar { display: flex; justify-content: center; padding-bottom: 20px; pointer-events: auto; }
+        .slot { width: 50px; height: 50px; background: rgba(0,0,0,0.5); border: 3px solid #555; margin: 0 5px; border-radius: 10px; display: flex; justify-content: center; align-items: center; color: white; font-weight: bold; font-size: 20px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: transform 0.1s; }
+        .slot.active { border-color: #FFA500; background: rgba(255, 255, 255, 0.2); transform: scale(1.15); box-shadow: 0 0 15px #FFA500; }
+        
+        /* Сенсорное управление */
+        #touch-controls { position: absolute; bottom: 80px; left: 0; width: 100%; pointer-events: none; display: none; }
+        .touch-zone { position: absolute; bottom: 0; width: 50%; height: 60vh; pointer-events: auto; }
+        #left-zone { left: 0; } #right-zone { right: 0; }
+        .action-btn { position: absolute; background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; width: 65px; height: 65px; color: white; font-weight: bold; display: flex; justify-content: center; align-items: center; pointer-events: auto; backdrop-filter: blur(5px); transition: background 0.1s; font-size: 12px; text-transform: uppercase; }
+        .action-btn:active { background: rgba(255,255,255,0.4); transform: scale(0.95); }
+        #btn-jump { bottom: 20px; right: 20px; width: 80px; height: 80px; font-size: 14px; background: rgba(76, 175, 80, 0.4); border-color: #4CAF50; }
+        #btn-build { bottom: 110px; right: 20px; background: rgba(33, 150, 243, 0.4); border-color: #2196F3; } 
+        #btn-break { bottom: 20px; right: 110px; background: rgba(244, 67, 54, 0.4); border-color: #F44336; }
+        #joystick-base { position: absolute; bottom: 40px; left: 40px; width: 120px; height: 120px; background: rgba(0,0,0,0.3); border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); display: none; pointer-events: none; backdrop-filter: blur(4px); }
+        #joystick-stick { position: absolute; top: 35px; left: 35px; width: 50px; height: 50px; background: rgba(255,255,255,0.7); border-radius: 50%; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+
+        /* Оверлей и меню (App Style) */
+        #overlay { position: absolute; top:0; left:0; width:100%; height:100%; background: rgba(20, 25, 30, 0.85); color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; pointer-events: auto; z-index: 100; backdrop-filter: blur(10px); }
+        #overlay h1 { font-size: 3.5em; margin-bottom: 5px; text-shadow: 0 4px 10px rgba(0,0,0,0.5); color: #FFA500; letter-spacing: 2px; }
+        #overlay p { font-size: 1.1em; text-align: center; max-width: 500px; margin-bottom: 30px; color: #ccc; }
+        
+        .menu-grid { display: grid; grid-template-columns: 1fr; gap: 15px; width: 300px; }
+        .menu-btn { padding: 15px; font-size: 1.2em; cursor: pointer; background: #333; color: white; border: 2px solid #555; border-radius: 12px; font-weight: bold; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 10px; }
+        .menu-btn:hover { background: #444; border-color: #777; transform: translateY(-2px); }
+        .menu-btn:active { transform: translateY(2px); }
+        .menu-btn.primary { background: #4CAF50; border-color: #388E3C; }
+        .menu-btn.primary:hover { background: #45a049; }
+        .menu-btn.save { background: #2196F3; border-color: #1976D2; }
+        .menu-btn.mod { background: #9C27B0; border-color: #7B1FA2; }
+
+        /* Папка модов */
+        #mods-folder { display: none; position: absolute; top: 5%; left: 5%; width: 90%; height: 90%; background: #1e1e1e; border: 2px solid #444; border-radius: 16px; z-index: 200; color: white; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,0.8); overflow: hidden; }
+        #mods-header { background: #2d2d2d; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; font-weight: bold; font-size: 1.2em; }
+        #mods-close { background: #E53935; color: white; border: none; padding: 8px 20px; cursor: pointer; font-weight: bold; border-radius: 8px; font-size: 1em; }
+        #mods-body { display: flex; flex: 1; overflow: hidden; }
+        #mods-sidebar { width: 220px; background: #252526; border-right: 1px solid #000; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+        .mod-file { padding: 12px; background: #333333; cursor: pointer; border-radius: 8px; border: 1px solid transparent; transition: 0.2s; display: flex; align-items: center; gap: 10px; }
+        .mod-file.selected { border-color: #FFA500; background: #3f3f3f; color: #FFA500; }
+        #mods-editor-container { flex: 1; display: flex; flex-direction: column; background: #1e1e1e; }
+        #mod-editor { flex: 1; background: #1e1e1e; color: #d4d4d4; font-family: 'Consolas', monospace; padding: 20px; border: none; resize: none; font-size: 15px; outline: none; line-height: 1.5; }
+        #apply-mod-btn { background: #FFA500; color: #000; font-weight: bold; padding: 15px; border: none; cursor: pointer; font-size: 1.1em; transition: 0.2s; }
+        #apply-mod-btn:hover { background: #ffb732; }
+
+        #react-mod-root { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50; }
+        
+        /* Нотификации */
+        #toast { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 20px; font-weight: bold; z-index: 300; display: none; pointer-events: none; transition: opacity 0.3s; }
+
+        @media (max-width: 768px) { 
+            #mods-folder { top: 0; left: 0; width: 100%; height: 100%; border-radius: 0; } 
+            #mods-sidebar { width: 140px; font-size: 0.9em; } 
+            #overlay h1 { font-size: 2.5em; }
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/react@17/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+</head>
+<body>
+    <div id="react-mod-root"></div>
+    <div id="toast">Уведомление</div>
+
+    <div id="overlay">
+        <h1>Playingtest 67</h1>
+        <p id="device-info">Определение устройства...</p>
+        
+        <div class="menu-grid">
+            <button id="start-btn" class="menu-btn primary">▶ Продолжить игру</button>
+            <button id="save-btn" class="menu-btn save">💾 Сохранить мир</button>
+            <button id="load-btn" class="menu-btn save">📂 Загрузить мир</button>
+            <button id="open-mods-btn" class="menu-btn mod">📁 Папка .mods</button>
+        </div>
+    </div>
+
+    <!-- Виртуальная папка .mods -->
+    <div id="mods-folder">
+        <div id="mods-header">
+            <span>/Playingtest/.mods/</span>
+            <button id="mods-close">Закрыть</button>
+        </div>
+        <div id="mods-body">
+            <div id="mods-sidebar">
+                <div class="mod-file selected">📄 app_hud.jsx</div>
+                <div style="font-size: 0.8em; color: #888; margin-top: auto;">💡 ПК: Перетащите .jsx файл сюда</div>
+            </div>
+            <div id="mods-editor-container">
+                <textarea id="mod-editor">
+// Мод: App HUD (Адаптивный интерфейс)
+function AppHUD() {
+    const [time, setTime] = React.useState(new Date().toLocaleTimeString());
+
+    React.useEffect(() => {
+        const timer = setInterval(() => setTime(new Date().toLocaleTimeString()), 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    return (
+        <div style={{
+            position: 'absolute', top: '15px', right: '15px',
+            background: 'rgba(20, 25, 30, 0.7)', color: 'white',
+            padding: '10px 15px', borderRadius: '12px',
+            fontFamily: 'sans-serif', backdropFilter: 'blur(5px)',
+            pointerEvents: 'auto', border: '1px solid rgba(255,255,255,0.2)',
+            display: 'flex', flexDirection: 'column', alignItems: 'flex-end'
+        }}>
+            <div style={{ fontSize: '0.8em', color: '#FFA500', fontWeight: 'bold', marginBottom: '5px' }}>
+                React Mod Active 🟢
+            </div>
+            <div style={{ fontSize: '1.2em', fontWeight: 'bold' }}>{time}</div>
+            <button 
+                style={{
+                    marginTop: '8px', background: '#4CAF50', border: 'none', 
+                    color: 'white', padding: '6px 12px', borderRadius: '6px', 
+                    cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9em'
+                }}
+                onClick={() => alert("Система модов работает стабильно!")}
+            >
+                Проверка
+            </button>
+        </div>
+    );
+}
+
+ReactDOM.render(<AppHUD />, document.getElementById('react-mod-root'));
+                </textarea>
+                <button id="apply-mod-btn">▶ Скомпилировать и Запустить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Игровой интерфейс -->
+    <div id="ui">
+        <div></div>
+        <div id="crosshair"></div>
+        <div id="toolbar"></div>
+    </div>
+
+    <!-- Сенсорное управление -->
+    <div id="touch-controls">
+        <div id="left-zone" class="touch-zone"></div>
+        <div id="right-zone" class="touch-zone"></div>
+        <div id="joystick-base"><div id="joystick-stick"></div></div>
+        
+        <div id="btn-jump" class="action-btn">Прыжок</div>
+        <div id="btn-build" class="action-btn">Строить</div>
+        <div id="btn-break" class="action-btn">Ломать</div>
+    </div>
+
+    <script>
+        // --- СИСТЕМА УВЕДОМЛЕНИЙ ---
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.style.display = 'block';
+            toast.style.opacity = '1';
+            setTimeout(() => { toast.style.opacity = '0'; setTimeout(()=>toast.style.display='none', 300); }, 2000);
+        }
+
+        // --- 1. АДАПТАЦИЯ ПОД УСТРОЙСТВО ---
+        const isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+        const infoText = document.getElementById('device-info');
+        const touchControls = document.getElementById('touch-controls');
+        
+        if (isMobile) {
+            infoText.innerHTML = "📱 Режим: Планшет / Смартфон<br>Используй экранные джойстики для игры.";
+            touchControls.style.display = 'block';
+        } else {
+            infoText.innerHTML = "💻 Режим: ПК<br>WASD - ходить, Пробел - прыжок, Мышь - обзор/блоки.";
+            touchControls.style.display = 'none';
+        }
+
+        // --- 2. СИСТЕМА СОХРАНЕНИЯ (LOCALSTORAGE) ---
+        document.getElementById('save-btn').addEventListener('click', () => {
+            // Сохраняем карту (преобразуем Map в Array)
+            const worldData = Array.from(world.entries());
+            localStorage.setItem('playingtest_67_world', JSON.stringify(worldData));
+            
+            // Сохраняем позицию игрока
+            const playerData = { x: player.x, y: player.y, z: player.z };
+            localStorage.setItem('playingtest_67_player', JSON.stringify(playerData));
+            
+            showToast("✅ Мир успешно сохранен!");
+        });
+
+        document.getElementById('load-btn').addEventListener('click', () => {
+            const worldData = localStorage.getItem('playingtest_67_world');
+            if(worldData) {
+                world.clear();
+                JSON.parse(worldData).forEach(([k,v]) => world.set(k, v));
+                updateWorldMeshes();
+                
+                const pData = JSON.parse(localStorage.getItem('playingtest_67_player'));
+                if(pData) { player.x = pData.x; player.y = pData.y; player.z = pData.z; }
+                
+                showToast("📂 Мир загружен!");
+                document.getElementById('start-btn').click(); // Авто-старт
+            } else {
+                showToast("❌ Сохранений не найдено.");
+            }
+        });
+
+
+        // --- 3. СИСТЕМА МОДОВ (React) ---
+        function runReactMod(code) {
+            try {
+                const transpiled = Babel.transform(code, { presets: ['react'] }).code;
+                const script = document.createElement('script');
+                script.type = 'text/javascript';
+                script.innerHTML = transpiled;
+                document.body.appendChild(script);
+                document.getElementById('mods-folder').style.display = 'none';
+                showToast("🚀 Мод активирован!");
+            } catch (error) {
+                alert("Ошибка мода:\n" + error.message);
+            }
+        }
+
+        document.getElementById('apply-mod-btn').addEventListener('click', () => {
+            runReactMod(document.getElementById('mod-editor').value);
+        });
+
+        window.addEventListener('dragover', e => e.preventDefault());
+        window.addEventListener('drop', e => {
+            e.preventDefault();
+            const file = e.dataTransfer.files[0];
+            if (file && (file.name.endsWith('.jsx') || file.name.endsWith('.js'))) {
+                const reader = new FileReader();
+                reader.onload = ev => {
+                    document.getElementById('mod-editor').value = ev.target.result;
+                    document.getElementById('mods-folder').style.display = 'flex';
+                    document.getElementById('overlay').style.display = 'none';
+                    document.exitPointerLock?.();
+                    showToast("📁 Файл мода загружен!");
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        document.getElementById('open-mods-btn').addEventListener('click', () => document.getElementById('mods-folder').style.display = 'flex');
+        document.getElementById('mods-close').addEventListener('click', () => document.getElementById('mods-folder').style.display = 'none');
+
+
+        // --- 4. ГРАФИКА И ДВИЖОК ---
+        function createPixelTexture(type) {
+            const cvs = document.createElement('canvas'); cvs.width = 16; cvs.height = 16;
+            const ctx = cvs.getContext('2d');
+            const fill = (cols) => { for(let x=0;x<16;x++) for(let y=0;y<16;y++) { ctx.fillStyle=cols[Math.floor(Math.random()*cols.length)]; ctx.fillRect(x,y,1,1); } };
+            
+            if (type === 'grass_top') fill(['#4CAF50', '#45a049', '#388E3C']);
+            else if (type === 'grass_side') { fill(['#795548', '#6D4C41', '#5D4037']); ctx.fillStyle = '#4CAF50'; for(let x=0; x<16; x++) ctx.fillRect(x, 0, 1, 2+Math.random()*3); }
+            else if (type === 'dirt') fill(['#795548', '#6D4C41', '#5D4037']);
+            else if (type === 'stone') fill(['#9E9E9E', '#757575', '#BDBDBD']);
+            else if (type === 'wood_side') fill(['#5D4037', '#4E342E']);
+            else if (type === 'wood_top') { fill(['#8D6E63', '#795548']); ctx.strokeStyle = '#5D4037'; ctx.beginPath(); ctx.arc(8,8, 4, 0, 7); ctx.stroke(); }
+            else if (type === 'leaves') { ctx.fillStyle = '#1B5E20'; ctx.fillRect(0,0,16,16); for(let i=0; i<30; i++){ ctx.fillStyle='#2E7D32'; ctx.fillRect(Math.random()*16, Math.random()*16, 2, 2); } }
+
+            const tex = new THREE.CanvasTexture(cvs); tex.magFilter = THREE.NearestFilter; return tex;
+        }
+
+        const BLOCKS = {
+            1: { color: '#4CAF50', mats: [new THREE.MeshLambertMaterial({map: createPixelTexture('grass_side')}), new THREE.MeshLambertMaterial({map: createPixelTexture('grass_side')}), new THREE.MeshLambertMaterial({map: createPixelTexture('grass_top')}), new THREE.MeshLambertMaterial({map: createPixelTexture('dirt')}), new THREE.MeshLambertMaterial({map: createPixelTexture('grass_side')}), new THREE.MeshLambertMaterial({map: createPixelTexture('grass_side')})] },
+            2: { color: '#795548', mats: new THREE.MeshLambertMaterial({map: createPixelTexture('dirt')}) },
+            3: { color: '#9E9E9E', mats: new THREE.MeshLambertMaterial({map: createPixelTexture('stone')}) },
+            4: { color: '#5D4037', mats: [new THREE.MeshLambertMaterial({map: createPixelTexture('wood_side')}), new THREE.MeshLambertMaterial({map: createPixelTexture('wood_side')}), new THREE.MeshLambertMaterial({map: createPixelTexture('wood_top')}), new THREE.MeshLambertMaterial({map: createPixelTexture('wood_top')}), new THREE.MeshLambertMaterial({map: createPixelTexture('wood_side')}), new THREE.MeshLambertMaterial({map: createPixelTexture('wood_side')})] },
+            5: { color: '#2E7D32', mats: new THREE.MeshLambertMaterial({map: createPixelTexture('leaves'), transparent: true, opacity: 0.9}) }
+        };
+
+        let selectedBlock = 1;
+        const toolbar = document.getElementById('toolbar');
+        ['🌿','🟤','🗿','🪵','🍃'].forEach((icon, i) => {
+            let id = i + 1;
+            let div = document.createElement('div');
+            div.className = `slot ${id == selectedBlock ? 'active' : ''}`;
+            div.innerText = icon;
+            div.style.backgroundColor = BLOCKS[id].color;
+            div.onclick = () => { selectedBlock = id; document.querySelectorAll('.slot').forEach((el, idx) => el.classList.toggle('active', idx+1 === id)); };
+            toolbar.appendChild(div);
+        });
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 20, 50);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.6));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.5); dirLight.position.set(10, 50, 10); scene.add(dirLight);
+
+        // --- 5. МИР ---
+        const world = new Map();
+        const meshes = {};
+        function getBlock(x, y, z) { return world.get(`${Math.floor(x)},${Math.floor(y)},${Math.floor(z)}`); }
+        function setBlock(x, y, z, type) { const k = `${Math.floor(x)},${Math.floor(y)},${Math.floor(z)}`; type === 0 ? world.delete(k) : world.set(k, type); }
+
+        // Генерация (если нет сохранения)
+        if (!localStorage.getItem('playingtest_67_world')) {
+            const CS = 32;
+            for (let x = -CS/2; x < CS/2; x++) {
+                for (let z = -CS/2; z < CS/2; z++) {
+                    let h = Math.floor(Math.sin(x/5)*2 + Math.cos(z/4)*2);
+                    setBlock(x, h, z, 1); setBlock(x, h-1, z, 2);
+                    for (let y = h-2; y > -5; y--) setBlock(x, y, z, 3);
+                    
+                    if (Math.random() < 0.03 && Math.abs(x)<CS/2-2 && Math.abs(z)<CS/2-2) {
+                        for(let ty=1; ty<=4; ty++) setBlock(x, h+ty, z, 4);
+                        for(let lx=-2; lx<=2; lx++) for(let lz=-2; lz<=2; lz++) for(let ly=3; ly<=5; ly++)
+                            if (Math.abs(lx)+Math.abs(lz)+Math.abs(ly-4) < 4 && !getBlock(x+lx, h+ly, z+lz)) setBlock(x+lx, h+ly, z+lz, 5);
+                    }
+                }
+            }
+        } else {
+            // Автозагрузка при старте
+            const data = JSON.parse(localStorage.getItem('playingtest_67_world'));
+            data.forEach(([k,v]) => world.set(k, v));
+        }
+
+        const geometry = new THREE.BoxGeometry(1, 1, 1);
+        const matrix = new THREE.Matrix4();
+
+        function updateWorldMeshes() {
+            let counts = {1:0, 2:0, 3:0, 4:0, 5:0};
+            world.forEach(t => counts[t]++);
+            for (let t in BLOCKS) {
+                if (meshes[t]) scene.remove(meshes[t]);
+                if (counts[t] > 0) {
+                    meshes[t] = new THREE.InstancedMesh(geometry, BLOCKS[t].mats, counts[t]);
+                    meshes[t].instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+                    scene.add(meshes[t]);
+                }
+            }
+            let idxs = {1:0, 2:0, 3:0, 4:0, 5:0};
+            world.forEach((t, k) => {
+                let [x,y,z] = k.split(',').map(Number);
+                matrix.setPosition(x,y,z);
+                meshes[t].setMatrixAt(idxs[t]++, matrix);
+            });
+            for (let t in BLOCKS) if (meshes[t]) meshes[t].instanceMatrix.needsUpdate = true;
+        }
+        updateWorldMeshes();
+
+        const highlightMesh = new THREE.Mesh(new THREE.BoxGeometry(1.01, 1.01, 1.01), new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.5 }));
+        scene.add(highlightMesh);
+
+        // --- 6. ИГРОК И ФИЗИКА ---
+        const player = { x: 0, y: 15, z: 0, vx: 0, vy: 0, vz: 0, w: 0.6, h: 1.6, speed: 6, jump: 8, onGround: false };
+        if (localStorage.getItem('playingtest_67_player')) {
+            const pData = JSON.parse(localStorage.getItem('playingtest_67_player'));
+            player.x = pData.x; player.y = pData.y; player.z = pData.z;
+        }
+
+        const pitchObj = new THREE.Object3D(); const yawObj = new THREE.Object3D();
+        yawObj.position.y = player.h; yawObj.add(pitchObj); pitchObj.add(camera); scene.add(yawObj);
+
+        function checkCol(px, py, pz) {
+            for (let x = Math.floor(px-player.w/2); x <= Math.floor(px+player.w/2); x++)
+                for (let y = Math.floor(py); y <= Math.floor(py+player.h); y++)
+                    for (let z = Math.floor(pz-player.w/2); z <= Math.floor(pz+player.w/2); z++)
+                        if (getBlock(x,y,z)) return true;
+            return false;
+        }
+
+        // --- УПРАВЛЕНИЕ ---
+        const keys = { w:false, a:false, s:false, d:false, space:false };
+        
+        document.addEventListener('keydown', e => {
+            if(document.activeElement.tagName === 'TEXTAREA') return;
+            if(e.code === 'KeyW') keys.w = true; if(e.code === 'KeyS') keys.s = true;
+            if(e.code === 'KeyA') keys.a = true; if(e.code === 'KeyD') keys.d = true;
+            if(e.code === 'Space') keys.space = true;
+            if(['1','2','3','4','5'].includes(e.key)) document.querySelectorAll('.slot')[parseInt(e.key)-1].click();
+            if(e.code === 'Escape') document.getElementById('overlay').style.display = 'flex';
+        });
+        document.addEventListener('keyup', e => {
+            if(e.code === 'KeyW') keys.w = false; if(e.code === 'KeyS') keys.s = false;
+            if(e.code === 'KeyA') keys.a = false; if(e.code === 'KeyD') keys.d = false;
+            if(e.code === 'Space') keys.space = false;
+        });
+
+        let targetBlock = null, placePos = null;
+        document.addEventListener('mousedown', e => {
+            if (document.pointerLockElement === document.body && targetBlock) {
+                if (e.button === 0) { setBlock(targetBlock.x, targetBlock.y, targetBlock.z, 0); updateWorldMeshes(); } 
+                else if (e.button === 2 && placePos) { setBlock(placePos.x, placePos.y, placePos.z, selectedBlock); updateWorldMeshes(); }
+            }
+        });
+
+        document.addEventListener('mousemove', e => {
+            if (document.pointerLockElement === document.body) {
+                yawObj.rotation.y -= e.movementX * 0.002;
+                pitchObj.rotation.x -= e.movementY * 0.002;
+                pitchObj.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitchObj.rotation.x));
+            }
+        });
+
+        document.getElementById('start-btn').addEventListener('click', () => {
+            document.getElementById('overlay').style.display = 'none';
+            if(!isMobile) document.body.requestPointerLock();
+            else if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{}); // PWA Fullscreen
+        });
+
+        // Сенсор (Mobile)
+        let tJoy = { active: false, id: null, ox: 0, oy: 0, x: 0, y: 0 };
+        let tLook = { active: false, id: null, lx: 0, ly: 0 };
+        const jBase = document.getElementById('joystick-base'), jStick = document.getElementById('joystick-stick');
+
+        document.getElementById('left-zone').addEventListener('touchstart', e => { e.preventDefault(); const t = e.changedTouches[0]; tJoy.active = true; tJoy.id = t.identifier; tJoy.ox = t.clientX; tJoy.oy = t.clientY; jBase.style.display = 'block'; jBase.style.left = (t.clientX - 60) + 'px'; jBase.style.top = (t.clientY - 60) + 'px'; jStick.style.transform = `translate(0px, 0px)`; });
+        document.getElementById('right-zone').addEventListener('touchstart', e => { e.preventDefault(); const t = e.changedTouches[0]; tLook.active = true; tLook.id = t.identifier; tLook.lx = t.clientX; tLook.ly = t.clientY; });
+        
+        document.addEventListener('touchmove', e => {
+            for(let i=0; i<e.changedTouches.length; i++) {
+                let t = e.changedTouches[i];
+                if (tJoy.active && t.identifier === tJoy.id) {
+                    let dx = t.clientX - tJoy.ox, dy = t.clientY - tJoy.oy;
+                    let dist = Math.sqrt(dx*dx + dy*dy); if (dist > 40) { dx = (dx/dist)*40; dy = (dy/dist)*40; }
+                    jStick.style.transform = `translate(${dx}px, ${dy}px)`; tJoy.x = dx/40; tJoy.y = dy/40;
+                }
+                if (tLook.active && t.identifier === tLook.id) {
+                    yawObj.rotation.y -= (t.clientX - tLook.lx) * 0.005; pitchObj.rotation.x -= (t.clientY - tLook.ly) * 0.005;
+                    pitchObj.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitchObj.rotation.x));
+                    tLook.lx = t.clientX; tLook.ly = t.clientY;
+                }
+            }
+        });
+        document.addEventListener('touchend', e => {
+            for(let i=0; i<e.changedTouches.length; i++) {
+                let t = e.changedTouches[i];
+                if (tJoy.id === t.identifier) { tJoy.active = false; jBase.style.display = 'none'; tJoy.x = 0; tJoy.y = 0; }
+                if (tLook.id === t.identifier) tLook.active = false;
+            }
+        });
+
+        document.getElementById('btn-jump').addEventListener('touchstart', e => { e.preventDefault(); keys.space = true; });
+        document.getElementById('btn-jump').addEventListener('touchend', e => { e.preventDefault(); keys.space = false; });
+        document.getElementById('btn-break').addEventListener('touchstart', e => { e.preventDefault(); if (targetBlock) { setBlock(targetBlock.x, targetBlock.y, targetBlock.z, 0); updateWorldMeshes(); } });
+        document.getElementById('btn-build').addEventListener('touchstart', e => { e.preventDefault(); if (placePos) { setBlock(placePos.x, placePos.y, placePos.z, selectedBlock); updateWorldMeshes(); } });
+
+
+        // --- 7. ИГРОВОЙ ЦИКЛ ---
+        let prevTime = performance.now();
+        const raycaster = new THREE.Raycaster();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            let dt = Math.min((performance.now() - prevTime) / 1000, 0.1); prevTime = performance.now();
+
+            player.vy -= 25 * dt;
+            let mx = tJoy.active ? tJoy.x : (keys.a ? -1 : 0) + (keys.d ? 1 : 0);
+            let mz = tJoy.active ? tJoy.y : (keys.w ? -1 : 0) + (keys.s ? 1 : 0);
+            if (mx !== 0 || mz !== 0) { let l = Math.sqrt(mx*mx + mz*mz); mx /= l; mz /= l; }
+            let dir = new THREE.Vector3(mx, 0, mz); dir.applyQuaternion(yawObj.quaternion);
+            player.vx = dir.x * player.speed; player.vz = dir.z * player.speed;
+
+            if (keys.space && player.onGround) { player.vy = player.jump; player.onGround = false; }
+
+            player.y += player.vy * dt;
+            if (checkCol(player.x, player.y, player.z)) { player.y -= player.vy * dt; if (player.vy < 0) player.onGround = true; player.vy = 0; } else player.onGround = false;
+            player.x += player.vx * dt; if (checkCol(player.x, player.y, player.z)) player.x -= player.vx * dt;
+            player.z += player.vz * dt; if (checkCol(player.x, player.y, player.z)) player.z -= player.vz * dt;
+
+            yawObj.position.set(player.x, player.y + player.h - 0.2, player.z);
+
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            targetBlock = null; placePos = null; highlightMesh.visible = false;
+            let rx = camera.getWorldPosition(new THREE.Vector3()).x, ry = camera.getWorldPosition(new THREE.Vector3()).y, rz = camera.getWorldPosition(new THREE.Vector3()).z;
+            let rDir = raycaster.ray.direction, prevBx = Math.floor(rx), prevBy = Math.floor(ry), prevBz = Math.floor(rz);
+
+            for (let d = 0; d < 6; d += 0.1) {
+                rx += rDir.x * 0.1; ry += rDir.y * 0.1; rz += rDir.z * 0.1;
+                let bx = Math.floor(rx), by = Math.floor(ry), bz = Math.floor(rz);
+                if (getBlock(bx, by, bz)) {
+                    targetBlock = { x: bx, y: by, z: bz }; placePos = { x: prevBx, y: prevBy, z: prevBz };
+                    highlightMesh.position.set(bx + 0.5, by + 0.5, bz + 0.5); highlightMesh.visible = true; break;
+                }
+                prevBx = bx; prevBy = by; prevBz = bz;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('contextmenu', e => e.preventDefault());
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+
+        animate();
+    </script>
+</body>
+</html>
+
